@@ -35,8 +35,8 @@
     ],
     "repositories": [
         {
-            "type": "path",
-            "url": "../worker"
+            "type": "vcs",
+            "url": "https://github.com/ephpm/php-worker"
         }
     ],
     "config": {
@@ -44,7 +44,7 @@
     },
     "extra": {
         "ephpm": {
-            "comment": "The `repositories` path entry resolves ephpm/worker from the sibling ../worker checkout because it is not on Packagist yet. Remove that entry once ephpm/worker is published to Packagist (or registered as a VCS repository)."
+            "comment": "The `repositories` VCS entry resolves ephpm/worker from its GitHub repo (tag v0.1.0) until it is registered on Packagist. Remove that entry once ephpm/worker is published to Packagist."
         }
     }
 }
