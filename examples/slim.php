@@ -27,6 +27,13 @@ require __DIR__ . '/../vendor/autoload.php';
 
 $app = AppFactory::create();
 
+// Slim as a PSR-15 handler needs its routing + error middleware added
+// explicitly — there is no $app->run() here to auto-wire them. Without error
+// middleware, an unmatched route's HttpNotFoundException bubbles to the Worker
+// and becomes a 500 instead of Slim's proper 404 (405 for a wrong method).
+$app->addRoutingMiddleware();
+$app->addErrorMiddleware(false, true, true);
+
 $app->get('/', function ($request, $response) {
     $response->getBody()->write('Hello from Slim under ePHPm worker mode!');
 
