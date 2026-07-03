@@ -1,0 +1,50 @@
+{
+    "name": "ephpm/psr15-worker",
+    "description": "Run any PSR-15 application under ePHPm persistent worker mode.",
+    "type": "library",
+    "license": "MIT",
+    "homepage": "https://github.com/ephpm/psr15-worker",
+    "authors": [
+        {
+            "name": "ePHPm"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "ephpm/worker": "^0.1",
+        "psr/http-server-handler": "^1.0",
+        "psr/http-message": "^1.1 || ^2.0",
+        "nyholm/psr7": "^1.8",
+        "nyholm/psr7-server": "^1.1"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10"
+    },
+    "autoload": {
+        "psr-4": {
+            "Ephpm\\Psr15\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Ephpm\\Psr15\\Tests\\": "tests/"
+        }
+    },
+    "bin": [
+        "bin/ephpm-worker"
+    ],
+    "repositories": [
+        {
+            "type": "path",
+            "url": "../worker"
+        }
+    ],
+    "config": {
+        "sort-packages": true
+    },
+    "extra": {
+        "ephpm": {
+            "comment": "The `repositories` path entry resolves ephpm/worker from the sibling ../worker checkout because it is not on Packagist yet. Remove that entry once ephpm/worker is published to Packagist (or registered as a VCS repository)."
+        }
+    }
+}

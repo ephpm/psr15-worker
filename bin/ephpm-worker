@@ -1,0 +1,96 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/**
+ * ephpm-worker — generic PSR-15 worker entrypoint for ePHPm worker mode.
+ *
+ * ePHPm launches this script for each persistent worker (point
+ * `[php] worker_script` at it, or at a copy of it inside your project). It:
+ *
+ *   1. locates and loads the project's Composer autoloader,
+ *   2. loads a user bootstrap that RETURNS a
+ *      Psr\Http\Server\RequestHandlerInterface (your framework app), and
+ *   3. runs the worker loop via Ephpm\Psr15\Worker.
+ *
+ * Usage:
+ *
+ *   ephpm-worker <path-to-app-bootstrap.php>
+ *
+ * where app-bootstrap.php ends with e.g. `return $app;` (a PSR-15 handler).
+ *
+ * If no bootstrap path is given, the env var EPHPM_WORKER_BOOTSTRAP is used.
+ * Copy this file into your project if you prefer to inline the bootstrapping.
+ */
+
+use Ephpm\Psr15\Worker;
+use Ephpm\Worker\Runtime;
+use Psr\Http\Server\RequestHandlerInterface;
+
+(static function (array $argv): int {
+    // --- 1. Locate the Composer autoloader (search upward from CWD & script). -
+    $autoload = null;
+    $seeds = [getcwd() ?: __DIR__, __DIR__];
+    foreach ($seeds as $seed) {
+        $dir = $seed;
+        while (true) {
+            $candidate = $dir . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'autoload.php';
+            if (is_file($candidate)) {
+                $autoload = $candidate;
+                break 2;
+            }
+            $parent = dirname($dir);
+            if ($parent === $dir) {
+                break; // reached filesystem root
+            }
+            $dir = $parent;
+        }
+    }
+
+    if ($autoload === null) {
+        fwrite(STDERR, "ephpm-worker: could not locate vendor/autoload.php (run composer install).\n");
+
+        return 1;
+    }
+
+    require $autoload;
+
+    // --- 2. Fail fast if not under ePHPm worker mode. ------------------------
+    Runtime::assertAvailable();
+
+    // --- 3. Load the user bootstrap that returns a PSR-15 handler. -----------
+    $bootstrapPath = $argv[1] ?? getenv('EPHPM_WORKER_BOOTSTRAP') ?: null;
+    if ($bootstrapPath === null) {
+        fwrite(
+            STDERR,
+            "ephpm-worker: no bootstrap given.\n"
+            . "Usage: ephpm-worker <path-to-app-bootstrap.php>\n"
+            . "The bootstrap must `return` a Psr\\Http\\Server\\RequestHandlerInterface.\n"
+        );
+
+        return 1;
+    }
+
+    if (!is_file($bootstrapPath)) {
+        fwrite(STDERR, "ephpm-worker: bootstrap not found: {$bootstrapPath}\n");
+
+        return 1;
+    }
+
+    /** @var mixed $handler */
+    $handler = require $bootstrapPath;
+
+    if (!$handler instanceof RequestHandlerInterface) {
+        fwrite(
+            STDERR,
+            "ephpm-worker: bootstrap {$bootstrapPath} must return a "
+            . "Psr\\Http\\Server\\RequestHandlerInterface.\n"
+        );
+
+        return 1;
+    }
+
+    // --- 4. Run the worker loop. --------------------------------------------
+    return (new Worker($handler))->run();
+})($argv);
