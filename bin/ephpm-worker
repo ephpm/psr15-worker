@@ -16,19 +16,20 @@ declare(strict_types=1);
  *
  * Usage:
  *
- *   ephpm-worker <path-to-app-bootstrap.php>
+ *   ephpm-worker <path-to-app-bootstrap.php>     (CLI only)
  *
  * where app-bootstrap.php ends with e.g. `return $app;` (a PSR-15 handler).
  *
- * If no bootstrap path is given, the env var EPHPM_WORKER_BOOTSTRAP is used.
- * Copy this file into your project if you prefer to inline the bootstrapping.
+ * Under the ePHPm engine there is no CLI argv, so the bootstrap path comes
+ * from the EPHPM_WORKER_BOOTSTRAP environment variable instead. Copy this file
+ * into your project if you prefer to inline the bootstrapping.
  */
 
 use Ephpm\Psr15\Worker;
 use Ephpm\Worker\Runtime;
 use Psr\Http\Server\RequestHandlerInterface;
 
-(static function (array $argv): int {
+exit((static function (array $args): int {
     // --- 1. Locate the Composer autoloader (search upward from CWD & script). -
     $autoload = null;
     $seeds = [getcwd() ?: __DIR__, __DIR__];
@@ -60,12 +61,13 @@ use Psr\Http\Server\RequestHandlerInterface;
     Runtime::assertAvailable();
 
     // --- 3. Load the user bootstrap that returns a PSR-15 handler. -----------
-    $bootstrapPath = $argv[1] ?? getenv('EPHPM_WORKER_BOOTSTRAP') ?: null;
+    $bootstrapPath = $args[1] ?? getenv('EPHPM_WORKER_BOOTSTRAP') ?: null;
     if ($bootstrapPath === null) {
         fwrite(
             STDERR,
             "ephpm-worker: no bootstrap given.\n"
-            . "Usage: ephpm-worker <path-to-app-bootstrap.php>\n"
+            . "Usage: ephpm-worker <path-to-app-bootstrap.php> (CLI), or set the\n"
+            . "EPHPM_WORKER_BOOTSTRAP environment variable (ePHPm engine).\n"
             . "The bootstrap must `return` a Psr\\Http\\Server\\RequestHandlerInterface.\n"
         );
 
@@ -93,4 +95,7 @@ use Psr\Http\Server\RequestHandlerInterface;
 
     // --- 4. Run the worker loop. --------------------------------------------
     return (new Worker($handler))->run();
-})($argv);
+    // $argv only exists under the CLI SAPI. Under the ePHPm engine (the normal
+    // way this script runs) there is no CLI argv — fall back to an empty list
+    // and let EPHPM_WORKER_BOOTSTRAP name the bootstrap.
+})(isset($argv) && \is_array($argv) ? $argv : []));
