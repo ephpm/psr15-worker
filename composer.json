@@ -44,7 +44,7 @@
     },
     "extra": {
         "ephpm": {
-            "comment": "The `repositories` VCS entry resolves ephpm/worker from its GitHub repo (tag v0.1.0) until it is registered on Packagist. Remove that entry once ephpm/worker is published to Packagist."
+            "comment": "ephpm packages are distributed via their GitHub repositories, not Packagist. The `repositories` VCS entry is what makes this package's own ephpm/worker dependency (tag v0.1.0) resolve when running this package's tests. Consumers of ephpm/psr15-worker must likewise add a Composer vcs repository for EACH ephpm package in the tree (Composer does not resolve VCS deps transitively) — see README."
         }
     }
 }
