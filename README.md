@@ -84,8 +84,17 @@ Point ePHPm at the worker entrypoint and switch on worker mode in `ephpm.toml`:
 ```toml
 [php]
 mode = "worker"
-worker_script = "vendor/ephpm/psr15-worker/bin/ephpm-worker"
+# concurrency = 0   # worker-thread pool size (0 = derived from CPU/cgroup quota)
+
+[php.worker]
+script = "vendor/ephpm/psr15-worker/bin/ephpm-worker"
 ```
+
+The worker knobs live in the `[php.worker]` table (`script`, `max_requests`,
+`boot_timeout`, `populate_superglobals`, `stream_threshold`); the pool size is
+`[php] concurrency` (a whole-server scheduling knob, `0` = auto). The old flat
+`worker_*` keys (`worker_script`, `worker_count`, …) were removed and are now a
+hard startup error.
 
 `bin/ephpm-worker` finds your project's `vendor/autoload.php`, loads a bootstrap
 that `return`s a `RequestHandlerInterface`, and runs the loop. Under the engine
@@ -97,10 +106,10 @@ process; the bootstrap file must `return $app;`):
 EPHPM_WORKER_BOOTSTRAP=app/worker-bootstrap.php ephpm serve --config ephpm.toml
 ```
 
-Note: `worker_script` must resolve to a file under `document_root`, so the
+Note: `[php.worker] script` must resolve to a file under `document_root`, so the
 vendored `bin/ephpm-worker` only works when `vendor/` lives inside the document
 root. Prefer to keep everything in your project? Copy `bin/ephpm-worker` (or
-one of the `examples/`) into your app and point `worker_script` at your copy —
+one of the `examples/`) into your app and point `[php.worker] script` at your copy —
 a self-contained worker script that builds the app and calls
 `(new Worker($app))->run()` itself needs no bootstrap variable at all.
 

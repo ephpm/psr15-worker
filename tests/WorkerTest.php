@@ -261,6 +261,104 @@ final class WorkerTest extends TestCase
         self::assertSame(1, WorkerSpy::$sends);
     }
 
+    /**
+     * Multiple files posted under one `name="photos[]"` field must NOT collapse
+     * last-wins under the literal key `photos[]` — PHP builds the pivoted
+     * `$_FILES['photos']['name'][0..1]` shape, which the request creator turns
+     * into a LIST of UploadedFile instances. A sibling scalar `name="avatar"`
+     * upload keeps its single-file shape.
+     */
+    public function testMultipartArrayOfFilesBecomesUploadedFileList(): void
+    {
+        $boundary = 'XxMULTIxX';
+        $body = self::filePart($boundary, 'photos[]', 'a.jpg', 'image/jpeg', 'AAA')
+            . self::filePart($boundary, 'photos[]', 'b.jpg', 'image/jpeg', 'BBBB')
+            . self::filePart($boundary, 'avatar', 'me.png', 'image/png', 'PNG')
+            . "--{$boundary}--\r\n";
+
+        // First, the raw $_FILES shape the parser produces: pivoted arrays for the
+        // bracketed field, scalar for the plain one.
+        [, $files] = Worker::parseMultipart($body, $boundary);
+        self::assertSame(['a.jpg', 'b.jpg'], $files['photos']['name']);
+        self::assertSame(['image/jpeg', 'image/jpeg'], $files['photos']['type']);
+        self::assertSame([3, 4], $files['photos']['size']);
+        self::assertCount(2, $files['photos']['tmp_name']);
+        self::assertSame('me.png', $files['avatar']['name']);
+        self::assertIsString($files['avatar']['tmp_name']);
+
+        // Then, end to end: the request creator turns the pivoted shape into a
+        // list of UploadedFileInterface (both files survive — not last-wins).
+        // Read filenames + contents INSIDE the handler — handleEnvelope() unlinks
+        // the spooled temp files in its finally, so the streams are only readable
+        // while the request is being handled.
+        $seen = [];
+        $handler = new class($seen) implements RequestHandlerInterface {
+            /** @param array<string, mixed> $seen */
+            public function __construct(private array &$seen)
+            {
+            }
+
+            public function handle(ServerRequestInterface $request): ResponseInterface
+            {
+                $files = $request->getUploadedFiles();
+                $photos = $files['photos'] ?? null;
+                $avatar = $files['avatar'] ?? null;
+                $this->seen = [
+                    'photos_is_list' => \is_array($photos),
+                    'photos_count' => \is_array($photos) ? \count($photos) : 0,
+                    'photos_0' => $photos[0] instanceof UploadedFileInterface,
+                    'photos_1' => $photos[1] instanceof UploadedFileInterface,
+                    'name_0' => $photos[0]->getClientFilename() ?? null,
+                    'name_1' => $photos[1]->getClientFilename() ?? null,
+                    'body_0' => (string) $photos[0]->getStream(),
+                    'body_1' => (string) $photos[1]->getStream(),
+                    'avatar_is_file' => $avatar instanceof UploadedFileInterface,
+                    'avatar_name' => $avatar instanceof UploadedFileInterface
+                        ? $avatar->getClientFilename()
+                        : null,
+                ];
+
+                return new Response(200, [], 'ok');
+            }
+        };
+
+        (new Worker($handler))->handleEnvelope(self::fakeEnvelope(
+            server: ['REQUEST_METHOD' => 'POST', 'REQUEST_URI' => '/upload'],
+            headers: ['Content-Type' => "multipart/form-data; boundary={$boundary}"],
+            rawBody: $body,
+        ));
+
+        self::assertTrue($seen['photos_is_list']);
+        self::assertSame(2, $seen['photos_count']);
+        self::assertTrue($seen['photos_0']);
+        self::assertTrue($seen['photos_1']);
+        self::assertSame('a.jpg', $seen['name_0']);
+        self::assertSame('b.jpg', $seen['name_1']);
+        self::assertSame('AAA', $seen['body_0']);
+        self::assertSame('BBBB', $seen['body_1']);
+        self::assertTrue($seen['avatar_is_file']);
+        self::assertSame('me.png', $seen['avatar_name']);
+        self::assertSame(1, WorkerSpy::$sends);
+    }
+
+    /**
+     * One `multipart/form-data` file part (no trailing boundary — the caller
+     * appends the closing delimiter).
+     */
+    private static function filePart(
+        string $boundary,
+        string $name,
+        string $filename,
+        string $type,
+        string $content,
+    ): string {
+        return "--{$boundary}\r\n"
+            . "Content-Disposition: form-data; name=\"{$name}\"; filename=\"{$filename}\"\r\n"
+            . "Content-Type: {$type}\r\n"
+            . "\r\n"
+            . "{$content}\r\n";
+    }
+
     // -------------------- Header flattening ----------------------------------
 
     public function testFlattenHeadersJoinsOrdinaryMultiValueHeaders(): void
