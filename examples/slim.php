@@ -13,7 +13,7 @@ declare(strict_types=1);
  *
  * Two ways to use it:
  *
- *   A) Point `[php] worker_script` at bin/ephpm-worker and pass this file's
+ *   A) Point `[php.worker] script` at bin/ephpm-worker and pass this file's
  *      sibling "bootstrap" that `return`s the app (see the return at the end).
  *
  *   B) Copy this file into your project as the worker script and let it run the

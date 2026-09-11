@@ -534,6 +534,14 @@ final class Worker
      * cleanup, and record it in `$files` in `$_FILES` shape (which the request
      * creator normalizes into PSR-7 UploadedFile instances).
      *
+     * A bracketed field name (`photos[]`, `docs[main]`, …) is placed in PHP's
+     * pivoted `$_FILES` shape — the five per-file attributes are lifted ABOVE the
+     * bracket path, so `name="photos[]"` yields
+     * `$_FILES['photos']['name'][0]`, `['tmp_name'][0]`, … and a second
+     * `photos[]` part appends index `1` (rather than the old last-wins collapse
+     * under the literal key `"photos[]"`). A plain name keeps the scalar
+     * `$_FILES['photo']['name']` shape.
+     *
      * @param array<string, mixed> $files
      */
     private static function assignFile(
@@ -556,13 +564,94 @@ final class Worker
             self::$requestTempFiles[] = $tmp;
         }
 
-        $files[$name] = [
+        $spec = [
             'name' => $filename,
             'type' => $type,
             'tmp_name' => $tmp,
             'error' => $error,
             'size' => \strlen($content),
         ];
+
+        [$base, $path] = self::splitFieldName($name);
+
+        if ($path === []) {
+            // Plain field name: the classic single-file $_FILES[base][attr] shape.
+            foreach ($spec as $attr => $value) {
+                $files[$base][$attr] = $value;
+            }
+
+            return;
+        }
+
+        // Bracketed name: PHP pivots the attributes above the bracket path, so
+        // each attribute array mirrors the field's structure. `[]` appends.
+        foreach ($spec as $attr => $value) {
+            if (!isset($files[$base]) || !\is_array($files[$base])) {
+                $files[$base] = [];
+            }
+            if (!isset($files[$base][$attr]) || !\is_array($files[$base][$attr])) {
+                $files[$base][$attr] = [];
+            }
+            self::assignByPath($files[$base][$attr], $path, $value);
+        }
+    }
+
+    /**
+     * Split a form field name into its base and bracket path:
+     * `photos[]` → `['photos', ['']]`, `docs[a][b]` → `['docs', ['a', 'b']]`,
+     * `photo` → `['photo', []]`. An empty path segment (`''`) means append.
+     *
+     * @return array{0: string, 1: list<string>}
+     */
+    private static function splitFieldName(string $name): array
+    {
+        $pos = \strpos($name, '[');
+        if ($pos === false) {
+            return [$name, []];
+        }
+
+        $path = [];
+        if (\preg_match_all('/\[([^\]]*)\]/', \substr($name, $pos), $m) !== false) {
+            $path = $m[1];
+        }
+
+        return [\substr($name, 0, $pos), $path];
+    }
+
+    /**
+     * Assign `$value` into `$target` following a bracket `$path`. An empty
+     * segment (`''`) appends at the next integer index, matching PHP's `name[]`.
+     *
+     * @param array<array-key, mixed> $target
+     * @param list<string>            $path
+     */
+    private static function assignByPath(array &$target, array $path, mixed $value): void
+    {
+        $ref = &$target;
+        $last = \count($path) - 1;
+        foreach ($path as $i => $segment) {
+            if ($segment === '') {
+                if ($i === $last) {
+                    $ref[] = $value;
+
+                    return;
+                }
+                $ref[] = [];
+                $ref = &$ref[\array_key_last($ref)];
+
+                continue;
+            }
+
+            if ($i === $last) {
+                $ref[$segment] = $value;
+
+                return;
+            }
+            if (!isset($ref[$segment]) || !\is_array($ref[$segment])) {
+                $ref[$segment] = [];
+            }
+            $ref = &$ref[$segment];
+        }
     }
 
     /**

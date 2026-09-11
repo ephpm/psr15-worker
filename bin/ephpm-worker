@@ -7,7 +7,7 @@ declare(strict_types=1);
  * ephpm-worker — generic PSR-15 worker entrypoint for ePHPm worker mode.
  *
  * ePHPm launches this script for each persistent worker (point
- * `[php] worker_script` at it, or at a copy of it inside your project). It:
+ * `[php.worker] script` at it, or at a copy of it inside your project). It:
  *
  *   1. locates and loads the project's Composer autoloader,
  *   2. loads a user bootstrap that RETURNS a
